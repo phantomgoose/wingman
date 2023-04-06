@@ -1,21 +1,32 @@
-use std::io::{self, BufRead, Write};
+use std::error::Error;
 
-fn main() {
-    // Display a prompt for user input
-    print!("Enter your input: ");
-    io::stdout().flush().expect("Failed to flush stdout");
+use async_openai::{
+    types::{CreateImageRequestArgs, ImageSize, ResponseFormat},
+    Client,
+};
 
-    // Read user input from stdin
-    let stdin = io::stdin();
-    let mut input = String::new();
-    stdin
-        .lock()
-        .read_line(&mut input)
-        .expect("Failed to read from stdin");
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // create client, reads OPENAI_API_KEY environment variable for API key.
+    let client = Client::new();
 
-    // Remove the trailing newline character
-    input.pop();
+    let request = CreateImageRequestArgs::default()
+        .prompt("cats on sofa and carpet in living room")
+        .n(2)
+        .response_format(ResponseFormat::Url)
+        .size(ImageSize::S256x256)
+        .build()?;
 
-    // Print the user input back to the console
-    println!("You entered: {}", input);
+    let response = client.images().create(request).await?;
+
+    // Download and save images to ./data directory.
+    // Each url is downloaded and saved in dedicated Tokio task.
+    // Directory is created if it doesn't exist.
+    let paths = response.save("./out").await?;
+
+    paths
+        .iter()
+        .for_each(|path| println!("Image file path: {}", path.display()));
+
+    Ok(())
 }
