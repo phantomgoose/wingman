@@ -3,14 +3,11 @@ use std::error::Error;
 use std::io::{stdin, stdout, Write};
 
 use async_openai::error::OpenAIError::ApiError;
-use async_openai::{types::CreateCompletionRequestArgs, Client};
+use async_openai::types::Role::{System, User};
+use async_openai::types::{ChatCompletionRequestMessage, CreateChatCompletionRequestArgs};
+use async_openai::Client;
 use futures::{future, StreamExt};
 use uuid::Uuid;
-
-struct PromptResponse {
-    prompt: String,
-    response: String,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -18,11 +15,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // create client, reads OPENAI_API_KEY environment variable for API key.
     let open_ai_client = Client::new();
+    // generate a random unique ID for this session
     let user_id = format!("wingman-user-{}", Uuid::new_v4());
     let mut prompt;
 
-    const MAX_PROMPTS_TO_STORE: usize = 10;
-    let mut prompt_store: VecDeque<PromptResponse> = VecDeque::with_capacity(MAX_PROMPTS_TO_STORE);
+    const MAX_HISTORICAL_MESSAGES: usize = 20;
+    let mut message_history: VecDeque<ChatCompletionRequestMessage> = VecDeque::new();
 
     println!("Enter your prompt (type 'q', 'quit,' or press ^C to exit):");
     loop {
@@ -40,46 +38,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
 
-        let previous_prompts = prompt_store
-            .iter()
-            .map(|prompt_response| {
-                format!(
-                    "Prompt: {}\nResponse: {}\n",
-                    prompt_response.prompt, prompt_response.response
-                )
-            })
-            .collect::<Vec<String>>();
+        message_history.push_back(ChatCompletionRequestMessage {
+            role: User,
+            content: trimmed_prompt.to_string(),
+            name: None,
+        });
 
-        let conversation_history = if previous_prompts.is_empty() {
-            "No previous prompts.".to_string()
-        } else {
-            format!(
-                "System: please note the previous conversation history consisting of user's prompts and your responses.\n{}",
-                previous_prompts.join("")
-            )
-        };
+        let prompt_to_send = message_history.clone();
 
-        let current_prompt = format!(
-            "System: Below is the user's latest prompt. Please reply to it, but consider the conversation history above in your response.\nPrompt: \n{}\nSystem: Do not prefix your response with the word Response, a newline, any character, or word.",
-            prompt
-        );
-
-        let prompts_to_send = conversation_history + &current_prompt;
-
-        let request = CreateCompletionRequestArgs::default()
-            .model("text-davinci-003")
-            .prompt(&prompts_to_send)
+        let request = CreateChatCompletionRequestArgs::default()
+            .model("gpt-4")
+            .messages(prompt_to_send)
             .max_tokens(2048u16)
-            // generate a random unique ID for this session
             .user(&user_id)
-            .temperature(0.5)
+            .temperature(0.9)
             .n(1)
             .stream(true)
             .stop("\u{0}")
             .build()
             .expect("Failed to build OpenAI request");
 
-        let response = open_ai_client.completions().create_stream(request).await?;
+        let response = open_ai_client.chat().create_stream(request).await?;
 
         print!("Response: ");
         let mut response_str = String::new();
@@ -90,8 +69,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         let token = response
                             .choices
                             .iter()
-                            .map(|choice| choice.text.as_str())
-                            .collect::<Vec<&str>>()
+                            .map(|choice| choice.delta.content.clone().unwrap_or_else(|| "".to_string()))
+                            .collect::<Vec<String>>()
                             .join("");
                         print!("{}", token);
                         stdout().flush().expect("Failed to flush stdout");
@@ -122,13 +101,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .await;
 
         // tidy up the prompt store and push the most recent interaction to it
-        if prompt_store.len() >= MAX_PROMPTS_TO_STORE {
-            prompt_store.pop_front();
+        while message_history.len() >= MAX_HISTORICAL_MESSAGES {
+            message_history.pop_front();
         }
 
-        prompt_store.push_back(PromptResponse {
-            prompt: prompt.clone(),
-            response: response_str.clone(),
+        message_history.push_back(ChatCompletionRequestMessage {
+            role: System,
+            content: response_str,
+            name: None,
         });
 
         println!("\nPrompt: ");
