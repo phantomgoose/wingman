@@ -50,12 +50,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
             })
             .collect::<Vec<String>>();
 
+        let conversation_history = if previous_prompts.is_empty() {
+            "No previous prompts.".to_string()
+        } else {
+            format!(
+                "System: please note the previous conversation history consisting of user's prompts and your responses.\n{}",
+                previous_prompts.join("")
+            )
+        };
+
         let current_prompt = format!(
-            "Prompt: {}\n. Do not start your response with a newline. Do not prefix your response with the word \"Response\", a newline character, or any other word or character.",
+            "System: Below is the user's latest prompt. Please reply to it, but consider the conversation history above in your response.\nPrompt: \n{}\nSystem: Do not prefix your response with the word Response, a newline, any character, or word.",
             prompt
         );
 
-        let prompts_to_send = previous_prompts.join("") + &current_prompt;
+        let prompts_to_send = conversation_history + &current_prompt;
 
         let request = CreateCompletionRequestArgs::default()
             .model("text-davinci-003")
