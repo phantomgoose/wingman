@@ -24,18 +24,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     const MAX_PROMPTS_TO_STORE: usize = 10;
     let mut prompt_store: VecDeque<PromptResponse> = VecDeque::with_capacity(MAX_PROMPTS_TO_STORE);
 
+    println!("Enter your prompt (type 'q', 'quit,' or press ^C to exit):");
     loop {
-        println!("Enter your prompt (type 'quit' or press ^C to exit):");
-
         prompt = String::new();
         stdin().read_line(&mut prompt)?;
 
-        if prompt.trim().eq_ignore_ascii_case("quit") {
+        let trimmed_prompt = prompt.trim();
+        if trimmed_prompt.eq_ignore_ascii_case("q") || trimmed_prompt.eq_ignore_ascii_case("quit") {
             println!("Exiting Wingman session...");
             break;
         }
 
-        if prompt.trim().is_empty() {
+        if trimmed_prompt.is_empty() {
             println!("Prompt must be at least 1 character long.");
             continue;
         }
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .collect::<Vec<String>>();
 
         let current_prompt = format!(
-            "Prompt: {}\n. Do not prefix your response with the word \"Response\" or a newline character.",
+            "Prompt: {}\n. Do not start your response with a newline. Do not prefix your response with the word \"Response\", a newline character, or any other word or character.",
             prompt
         );
 
@@ -72,6 +72,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         let response = open_ai_client.completions().create_stream(request).await?;
 
+        print!("Response: ");
         let mut response_str = String::new();
         response
             .for_each(|response| {
@@ -121,8 +122,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             response: response_str.clone(),
         });
 
-        // insert empty line
-        println!();
+        println!("\nPrompt: ");
     }
 
     Ok(())
