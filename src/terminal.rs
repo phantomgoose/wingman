@@ -34,3 +34,29 @@ pub fn print_streaming_response(token: &String) {
     print!("{}", token);
     stdout().flush().unwrap();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::is_exit_code;
+
+    fn test_is_exit_code(input: &str, expected: bool) {
+        assert_eq!(is_exit_code(input), expected);
+        assert_eq!(is_exit_code(input.to_uppercase().as_str()), expected);
+        assert_eq!(is_exit_code(input.to_lowercase().as_str()), expected);
+    }
+
+    #[test]
+    fn test_is_exit_code_q() {
+        test_is_exit_code("q", true);
+    }
+
+    #[test]
+    fn test_is_exit_code_quit() {
+        test_is_exit_code("quit", true);
+    }
+
+    #[test]
+    fn test_is_exit_code_random() {
+        test_is_exit_code("random", false);
+    }
+}
