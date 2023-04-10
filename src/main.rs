@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 use std::error::Error;
-use std::fmt::format;
 use std::io::{stdin, stdout, Write};
 
 use async_openai::error::OpenAIError::ApiError;
@@ -19,31 +18,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // create client, reads OPENAI_API_KEY environment variable for API key.
     let open_ai_client = Client::new();
-
     let user_id = format!("wingman-user-{}", Uuid::new_v4());
-
     let mut prompt;
 
-    // store the last 10 prompts
-    // TODO: be smarter about this, maybe count the tokens?
-    let max_prompts = 10;
-    let mut prompt_store: VecDeque<PromptResponse> = VecDeque::with_capacity(max_prompts);
+    const MAX_PROMPTS_TO_STORE: usize = 10;
+    let mut prompt_store: VecDeque<PromptResponse> = VecDeque::with_capacity(MAX_PROMPTS_TO_STORE);
 
-    // continually prompt for input until the user types "quit"
     loop {
         println!("Enter your prompt (type 'quit' or press ^C to exit):");
 
-        // clear the old prompt
         prompt = String::new();
-        // read the prompt from the user
         stdin().read_line(&mut prompt)?;
 
-        if prompt.trim().to_lowercase().eq("quit") {
+        if prompt.trim().eq_ignore_ascii_case("quit") {
             println!("Exiting Wingman session...");
             break;
         }
 
-        if prompt.trim().len() < 1 {
+        if prompt.trim().is_empty() {
             println!("Prompt must be at least 1 character long.");
             continue;
         }
@@ -65,7 +57,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         let prompts_to_send = previous_prompts.join("") + &current_prompt;
 
-        // send the prompt to OpenAI
         let request = CreateCompletionRequestArgs::default()
             .model("text-davinci-003")
             .prompt(&prompts_to_send)
@@ -95,7 +86,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         print!("{}", token);
                         stdout().flush().expect("Failed to flush stdout");
 
-                        response_str.push_str(token.as_str());
+                        response_str.push_str(&token);
                     }
                     Err(err) => {
                         match err {
@@ -121,7 +112,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .await;
 
         // tidy up the prompt store and push the most recent interaction to it
-        while prompt_store.len() >= max_prompts {
+        if prompt_store.len() >= MAX_PROMPTS_TO_STORE {
             prompt_store.pop_front();
         }
 
